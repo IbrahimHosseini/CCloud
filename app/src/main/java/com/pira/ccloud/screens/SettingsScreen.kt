@@ -3,7 +3,6 @@ package com.pira.ccloud.screens
 import android.content.Intent
 import android.net.Uri
 import android.util.Log
-import android.view.KeyEvent
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -14,7 +13,6 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -56,19 +54,21 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusProperties
-import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.pira.ccloud.BuildConfig
 import com.pira.ccloud.R
+import com.pira.ccloud.components.focusOutline
+import com.pira.ccloud.components.focusRing
 import com.pira.ccloud.data.model.SubtitleSettings
 import com.pira.ccloud.data.model.VideoPlayerSettings
 import com.pira.ccloud.data.model.FontSettings
@@ -123,14 +123,6 @@ fun SettingsScreen(
     var latestVersionUrl by remember { mutableStateOf("") }
     var isCheckingUpdate by remember { mutableStateOf(false) }
     var watchedEpisodesCacheSize by remember { mutableStateOf(0L) }
-    
-    // Focus requesters for handling TV remote navigation
-    val focusRequester = remember { FocusRequester() }
-    val themeCardFocusRequester = remember { FocusRequester() }
-    val videoCardFocusRequester = remember { FocusRequester() }
-    val aboutCardFocusRequester = remember { FocusRequester() }
-    val updateCardFocusRequester = remember { FocusRequester() }
-    val resetCardFocusRequester = remember { FocusRequester() }
     
     // Configure JSON to ignore unknown keys
     val json = Json { ignoreUnknownKeys = true }
@@ -286,12 +278,11 @@ fun SettingsScreen(
         }
     }
     
+    // The list itself must not be focusable: the D-pad would stop on it instead of the cards
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp)
-            .focusRequester(focusRequester)
-            .focusable(),
+            .padding(16.dp),
     ) {
         item {
             AnimatedVisibility(
@@ -317,8 +308,7 @@ fun SettingsScreen(
                             onClick = { navController.navigate("favorites") },
                             modifier = Modifier
                                 .size(48.dp)
-                                .focusable()
-                                .focusRequester(remember { FocusRequester() })
+                                .focusRing(CircleShape)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Favorite,
@@ -334,7 +324,7 @@ fun SettingsScreen(
         // Theme Settings Card
         item {
             var isExpanded by remember { mutableStateOf(false) }
-            val focusRequester = remember { FocusRequester() }
+            var isHeaderFocused by remember { mutableStateOf(false) }
             
             AnimatedVisibility(
                 visible = true,
@@ -344,27 +334,17 @@ fun SettingsScreen(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { isExpanded = !isExpanded }
-                        .focusable()
-                        .focusRequester(themeCardFocusRequester)
-                        .focusProperties {
-                            down = videoCardFocusRequester
-                        }
-                        .onKeyEvent { keyEvent ->
-                            when (keyEvent.key) {
-                                Key.Enter, Key.Spacebar -> {
-                                    isExpanded = !isExpanded
-                                    true // Handled
-                                }
-                                else -> false // Let default handling occur
-                            }
-                        },
+                        .focusOutline(isHeaderFocused, CardDefaults.shape),
                     elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
+                        // Only the header toggles the card (here and in the other expandable
+                        // cards), so the D-pad can move on to the options below it
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .onFocusChanged { isHeaderFocused = it.isFocused }
+                                .clickable { isExpanded = !isExpanded }
                                 .padding(bottom = 12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -503,7 +483,7 @@ fun SettingsScreen(
         // Video Player Settings Card
         item {
             var isExpanded by remember { mutableStateOf(false) }
-            val focusRequester = remember { FocusRequester() }
+            var isHeaderFocused by remember { mutableStateOf(false) }
             
             AnimatedVisibility(
                 visible = true,
@@ -513,28 +493,15 @@ fun SettingsScreen(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { isExpanded = !isExpanded }
-                        .focusable()
-                        .focusRequester(videoCardFocusRequester)
-                        .focusProperties {
-                            up = themeCardFocusRequester
-                            down = aboutCardFocusRequester
-                        }
-                        .onKeyEvent { keyEvent ->
-                            when (keyEvent.key) {
-                                Key.Enter, Key.Spacebar -> {
-                                    isExpanded = !isExpanded
-                                    true // Handled
-                                }
-                                else -> false // Let default handling occur
-                            }
-                        },
+                        .focusOutline(isHeaderFocused, CardDefaults.shape),
                     elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .onFocusChanged { isHeaderFocused = it.isFocused }
+                                .clickable { isExpanded = !isExpanded }
                                 .padding(bottom = 12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -573,10 +540,13 @@ fun SettingsScreen(
                                     },
                                     valueRange = 5f..30f,
                                     steps = 24, // Allow values from 5 to 30 in 1-second increments,
+                                    // Material's Slider has no key handling, so the D-pad left/right
+                                    // adjust it here, on key press only (also for the text size slider)
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .focusable()
+                                        .focusRing(RoundedCornerShape(8.dp))
                                         .onKeyEvent { keyEvent ->
+                                            if (keyEvent.type != KeyEventType.KeyDown) return@onKeyEvent false
                                             when (keyEvent.key) {
                                                 Key.DirectionLeft -> {
                                                     val newValue = (videoPlayerSettings.seekTimeSeconds - 1).coerceIn(5, 30).toFloat()
@@ -642,8 +612,9 @@ fun SettingsScreen(
                                     valueRange = 10f..50f,
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .focusable()
+                                        .focusRing(RoundedCornerShape(8.dp))
                                         .onKeyEvent { keyEvent ->
+                                            if (keyEvent.type != KeyEventType.KeyDown) return@onKeyEvent false
                                             when (keyEvent.key) {
                                                 Key.DirectionLeft -> {
                                                     val newValue = (subtitleSettings.textSize - 1).coerceIn(10f, 50f)
@@ -679,7 +650,7 @@ fun SettingsScreen(
         // Font Settings Card
         item {
             var isExpanded by remember { mutableStateOf(false) }
-            val focusRequester = remember { FocusRequester() }
+            var isHeaderFocused by remember { mutableStateOf(false) }
             
             AnimatedVisibility(
                 visible = true,
@@ -689,24 +660,15 @@ fun SettingsScreen(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { isExpanded = !isExpanded }
-                        .focusable()
-                        .focusRequester(remember { FocusRequester() })
-                        .onKeyEvent { keyEvent ->
-                            when (keyEvent.key) {
-                                Key.Enter, Key.Spacebar -> {
-                                    isExpanded = !isExpanded
-                                    true // Handled
-                                }
-                                else -> false // Let default handling occur
-                            }
-                        },
+                        .focusOutline(isHeaderFocused, CardDefaults.shape),
                     elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .onFocusChanged { isHeaderFocused = it.isFocused }
+                                .clickable { isExpanded = !isExpanded }
                                 .padding(bottom = 12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -776,8 +738,6 @@ fun SettingsScreen(
         
         // Episode Marks Cache Card
         item {
-            val focusRequester = remember { FocusRequester() }
-            
             AnimatedVisibility(
                 visible = true,
                 enter = fadeIn(animationSpec = tween(900)) + slideInVertically(animationSpec = tween(900, delayMillis = 600)),
@@ -786,18 +746,8 @@ fun SettingsScreen(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { showClearWatchedEpisodesDialog = true }
-                        .focusable()
-                        .focusRequester(remember { FocusRequester() })
-                        .onKeyEvent { keyEvent ->
-                            when (keyEvent.key) {
-                                Key.Enter, Key.Spacebar -> {
-                                    showClearWatchedEpisodesDialog = true
-                                    true // Handled
-                                }
-                                else -> false // Let default handling occur
-                            }
-                        },
+                        .focusRing(CardDefaults.shape)
+                        .clickable { showClearWatchedEpisodesDialog = true },
                     elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
@@ -852,8 +802,6 @@ fun SettingsScreen(
         
         // About Card
         item {
-            val focusRequester = remember { FocusRequester() }
-            
             AnimatedVisibility(
                 visible = true,
                 enter = fadeIn(animationSpec = tween(1100)) + slideInVertically(animationSpec = tween(1100, delayMillis = 800)),
@@ -862,22 +810,8 @@ fun SettingsScreen(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { navController?.navigate("about") }
-                        .focusable()
-                        .focusRequester(aboutCardFocusRequester)
-                        .focusProperties {
-                            up = videoCardFocusRequester
-                            down = updateCardFocusRequester
-                        }
-                        .onKeyEvent { keyEvent ->
-                            when (keyEvent.key) {
-                                Key.Enter, Key.Spacebar -> {
-                                    navController?.navigate("about")
-                                    true // Handled
-                                }
-                                else -> false // Let default handling occur
-                            }
-                        },
+                        .focusRing(CardDefaults.shape)
+                        .clickable { navController?.navigate("about") },
                     elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
@@ -924,8 +858,6 @@ fun SettingsScreen(
         
         // Check for Updates Card
         item {
-            val focusRequester = remember { FocusRequester() }
-            
             AnimatedVisibility(
                 visible = true,
                 enter = fadeIn(animationSpec = tween(1200)) + slideInVertically(animationSpec = tween(1200, delayMillis = 900)),
@@ -934,26 +866,10 @@ fun SettingsScreen(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .focusRing(CardDefaults.shape)
                         .clickable { 
                             if (!isCheckingUpdate) {
                                 checkForUpdates()
-                            }
-                        }
-                        .focusable()
-                        .focusRequester(updateCardFocusRequester)
-                        .focusProperties {
-                            up = aboutCardFocusRequester
-                            down = resetCardFocusRequester
-                        }
-                        .onKeyEvent { keyEvent ->
-                            when (keyEvent.key) {
-                                Key.Enter, Key.Spacebar -> {
-                                    if (!isCheckingUpdate) {
-                                        checkForUpdates()
-                                    }
-                                    true // Handled
-                                }
-                                else -> false // Let default handling occur
                             }
                         },
                     elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
@@ -1013,8 +929,6 @@ fun SettingsScreen(
         
         // Reset to Defaults Card
         item {
-            val focusRequester = remember { FocusRequester() }
-            
             AnimatedVisibility(
                 visible = true,
                 enter = fadeIn(animationSpec = tween(1400)) + slideInVertically(animationSpec = tween(1400, delayMillis = 1100)),
@@ -1023,21 +937,8 @@ fun SettingsScreen(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { showResetDialog = true }
-                        .focusable()
-                        .focusRequester(resetCardFocusRequester)
-                        .focusProperties {
-                            up = updateCardFocusRequester
-                        }
-                        .onKeyEvent { keyEvent ->
-                            when (keyEvent.key) {
-                                Key.Enter, Key.Spacebar -> {
-                                    showResetDialog = true
-                                    true // Handled
-                                }
-                                else -> false // Let default handling occur
-                            }
-                        },
+                        .focusRing(CardDefaults.shape)
+                        .clickable { showResetDialog = true },
                     elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
@@ -1176,23 +1077,11 @@ fun ThemeModeOption(
     isSelected: Boolean,
     onSelect: (ThemeMode) -> Unit
 ) {
-    val focusRequester = remember { FocusRequester() }
-    
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .focusRing(RoundedCornerShape(8.dp))
             .clickable { onSelect(mode) }
-            .focusable()
-            .focusRequester(focusRequester)
-            .onKeyEvent { keyEvent ->
-                when (keyEvent.key) {
-                    Key.Enter, Key.Spacebar -> {
-                        onSelect(mode)
-                        true // Handled
-                    }
-                    else -> false // Let default handling occur
-                }
-            }
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -1215,28 +1104,16 @@ fun ColorOption(
     onSelect: (Color) -> Unit,
     label: String? = null
 ) {
-    val focusRequester = remember { FocusRequester() }
-    
     Column(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
             modifier = Modifier
                 .size(48.dp)
+                .focusRing(CircleShape, outset = 4.dp)
                 .clip(CircleShape)
                 .background(color)
                 .clickable { onSelect(color) }
-                .focusable()
-                .focusRequester(focusRequester)
-                .onKeyEvent { keyEvent ->
-                    when (keyEvent.key) {
-                        Key.Enter, Key.Spacebar -> {
-                            onSelect(color)
-                            true // Handled
-                        }
-                        else -> false // Let default handling occur
-                    }
-                }
                 .then(
                     if (isSelected) {
                         Modifier.padding(4.dp)
@@ -1354,14 +1231,13 @@ fun ColorOptionButton(
     showBorder: Boolean = false,
     label: String? = null
 ) {
-    val focusRequester = remember { FocusRequester() }
-    
     Column(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
             modifier = Modifier
                 .size(32.dp)
+                .focusRing(RoundedCornerShape(6.dp), outset = 4.dp)
                 .clip(RoundedCornerShape(4.dp))
                 .background(
                     if (color == Color.Transparent && showBorder) {
@@ -1380,18 +1256,7 @@ fun ColorOptionButton(
                         Modifier
                     }
                 )
-                .clickable(onClick = onClick)
-                .focusable()
-                .focusRequester(focusRequester)
-                .onKeyEvent { keyEvent ->
-                    when (keyEvent.key) {
-                        Key.Enter, Key.Spacebar -> {
-                            onClick()
-                            true // Handled
-                        }
-                        else -> false // Let default handling occur
-                    }
-                },
+                .clickable(onClick = onClick),
             contentAlignment = Alignment.Center
         ) {
             if (isSelected) {
@@ -1428,23 +1293,11 @@ fun FontOption(
     isSelected: Boolean,
     onSelect: (FontType) -> Unit
 ) {
-    val focusRequester = remember { FocusRequester() }
-    
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .focusRing(RoundedCornerShape(8.dp))
             .clickable { onSelect(fontType) }
-            .focusable()
-            .focusRequester(focusRequester)
-            .onKeyEvent { keyEvent ->
-                when (keyEvent.key) {
-                    Key.Enter, Key.Spacebar -> {
-                        onSelect(fontType)
-                        true // Handled
-                    }
-                    else -> false // Let default handling occur
-                }
-            }
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

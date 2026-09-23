@@ -10,7 +10,6 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,6 +24,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -57,13 +57,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusProperties
-import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -74,6 +69,8 @@ import androidx.navigation.NavController
 import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
 import com.pira.ccloud.R
+import com.pira.ccloud.components.focusOutline
+import com.pira.ccloud.components.focusRing
 import com.pira.ccloud.data.model.FavoriteGroup
 import com.pira.ccloud.data.model.FavoriteItem
 import com.pira.ccloud.navigation.AppScreens
@@ -91,11 +88,6 @@ fun FavoritesScreen(navController: NavController) {
     var showCreateGroupDialog by remember { mutableStateOf(false) }
     var showMoveToGroupDialog by remember { mutableStateOf(false) }
     var selectedItem by remember { mutableStateOf<FavoriteItem?>(null) }
-    
-    // Focus requesters for handling TV remote navigation
-    val focusRequester = remember { FocusRequester() }
-    val groupCardFocusRequester = remember { FocusRequester() }
-    val favoritesCardFocusRequester = remember { FocusRequester() }
     
     // Load favorites and groups when screen is displayed
     LaunchedEffect(Unit) {
@@ -513,8 +505,7 @@ fun FavoritesScreen(navController: NavController) {
                     onClick = { showCreateGroupDialog = true },
                     modifier = Modifier
                         .size(48.dp)
-                        .focusable()
-                        .focusRequester(remember { FocusRequester() })
+                        .focusRing(CircleShape)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Add,
@@ -529,8 +520,7 @@ fun FavoritesScreen(navController: NavController) {
                         onClick = { showDeleteAllDialog = true },
                         modifier = Modifier
                             .size(48.dp)
-                            .focusable()
-                            .focusRequester(remember { FocusRequester() })
+                            .focusRing(CircleShape)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Delete,
@@ -548,15 +538,12 @@ fun FavoritesScreen(navController: NavController) {
             enter = fadeIn(animationSpec = tween(400)) + slideInVertically(animationSpec = tween(400, delayMillis = 100)),
             exit = fadeOut(animationSpec = tween(400)) + slideOutVertically(animationSpec = tween(400))
         ) {
+            // Cards that only hold other controls must not be focusable, or the D-pad stops on
+            // the card instead of reaching the controls inside it
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .focusable()
-                    .focusRequester(groupCardFocusRequester)
-                    .focusProperties {
-                        down = favoritesCardFocusRequester
-                    },
+                    .padding(horizontal = 16.dp),
                 elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -589,35 +576,12 @@ fun FavoritesScreen(navController: NavController) {
                         items(groups) { group ->
                             Box {
                                 var showGroupMenu by remember { mutableStateOf(false) }
+                                var isNameFocused by remember { mutableStateOf(false) }
                                 
                                 Card(
                                     modifier = Modifier
                                         .padding(vertical = 4.dp)
-                                        .clickable {
-                                            selectedGroup = group
-                                            // Load favorites for this group
-                                            favorites = if (group.isDefault) {
-                                                StorageUtils.loadAllFavorites(context)
-                                            } else {
-                                                StorageUtils.getFavoritesInGroup(context, group.id)
-                                            }
-                                        }
-                                        .focusable()
-                                        .onKeyEvent { keyEvent ->
-                                            when (keyEvent.key) {
-                                                Key.Enter, Key.Spacebar -> {
-                                                    selectedGroup = group
-                                                    // Load favorites for this group
-                                                    favorites = if (group.isDefault) {
-                                                        StorageUtils.loadAllFavorites(context)
-                                                    } else {
-                                                        StorageUtils.getFavoritesInGroup(context, group.id)
-                                                    }
-                                                    true // Handled
-                                                }
-                                                else -> false // Let default handling occur
-                                            }
-                                        },
+                                        .focusOutline(isNameFocused, RoundedCornerShape(16.dp)),
                                     shape = RoundedCornerShape(16.dp),
                                     elevation = CardDefaults.cardElevation(defaultElevation = if (selectedGroup?.id == group.id) 4.dp else 0.dp),
                                     colors = if (selectedGroup?.id == group.id) {
@@ -626,17 +590,38 @@ fun FavoritesScreen(navController: NavController) {
                                         CardDefaults.cardColors()
                                     }
                                 ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(text = group.name)
+                                    // The name selects the playlist and the menu button sits next
+                                    // to it (not inside a clickable chip), so the D-pad reaches both
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = group.name,
+                                            modifier = Modifier
+                                                .onFocusChanged { isNameFocused = it.isFocused }
+                                                .clickable {
+                                                    selectedGroup = group
+                                                    // Load favorites for this group
+                                                    favorites = if (group.isDefault) {
+                                                        StorageUtils.loadAllFavorites(context)
+                                                    } else {
+                                                        StorageUtils.getFavoritesInGroup(context, group.id)
+                                                    }
+                                                }
+                                                .padding(
+                                                    start = 12.dp,
+                                                    top = 8.dp,
+                                                    end = if (group.isDefault) 12.dp else 0.dp,
+                                                    bottom = 8.dp
+                                                )
+                                        )
                                         
                                         // Show menu icon for non-default groups
                                         if (!group.isDefault) {
                                             IconButton(
                                                 onClick = { showGroupMenu = true },
-                                                modifier = Modifier.size(24.dp)
+                                                modifier = Modifier
+                                                    .padding(top = 8.dp, end = 12.dp, bottom = 8.dp)
+                                                    .size(24.dp)
+                                                    .focusRing(CircleShape)
                                             ) {
                                                 Icon(
                                                     imageVector = Icons.Default.MoreVert,
@@ -753,12 +738,7 @@ fun FavoritesScreen(navController: NavController) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp)
-                        .weight(1f)
-                        .focusable()
-                        .focusRequester(favoritesCardFocusRequester)
-                        .focusProperties {
-                            up = groupCardFocusRequester
-                        },
+                        .weight(1f),
                     elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                     colors = CardDefaults.cardColors(containerColor = Color.Transparent)
                 ) {
@@ -811,88 +791,86 @@ fun FavoriteItemCard(
     onMoveToGroup: (FavoriteItem) -> Unit
 ) {
     var showMenu by remember { mutableStateOf(false) }
-    val focusRequester = remember { FocusRequester() }
+    var isContentFocused by remember { mutableStateOf(false) }
     
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick() }
-            .focusable()
-            .focusRequester(focusRequester)
-            .onKeyEvent { keyEvent ->
-                when (keyEvent.key) {
-                    Key.Enter, Key.Spacebar -> {
-                        onClick()
-                        true // Handled
-                    }
-                    else -> false // Let default handling occur
-                }
-            },
+            .focusOutline(isContentFocused, RoundedCornerShape(12.dp)),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
         shape = RoundedCornerShape(12.dp)
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Poster image
-            Image(
-                painter = rememberAsyncImagePainter(
-                    ImageRequest.Builder(LocalContext.current)
-                        .data(favorite.image)
-                        .crossfade(true)
-                        .build()
-                ),
-                contentDescription = favorite.title,
-                modifier = Modifier
-                    .height(80.dp)
-                    .width(60.dp)
-                    .clip(RoundedCornerShape(8.dp)),
-                contentScale = ContentScale.Crop
-            )
-            
-            // Title and details
-            Column(
+            // Opening the item and its menu button are side by side rather than the button
+            // sitting inside a clickable card, which the D-pad could never reach
+            Row(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(start = 16.dp)
+                    .onFocusChanged { isContentFocused = it.isFocused }
+                    .clickable { onClick() }
+                    .padding(start = 16.dp, top = 16.dp, bottom = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = favorite.title,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(bottom = 4.dp)
+                // Poster image
+                Image(
+                    painter = rememberAsyncImagePainter(
+                        ImageRequest.Builder(LocalContext.current)
+                            .data(favorite.image)
+                            .crossfade(true)
+                            .build()
+                    ),
+                    contentDescription = favorite.title,
+                    modifier = Modifier
+                        .height(80.dp)
+                        .width(60.dp)
+                        .clip(RoundedCornerShape(8.dp)),
+                    contentScale = ContentScale.Crop
                 )
                 
-                // Show type and year
-                Text(
-                    text = "${favorite.type.capitalize()} • ${favorite.year}",
-                    modifier = Modifier.padding(bottom = 4.dp)
-                )
-                
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
+                // Title and details
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 16.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Favorite,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .size(16.dp)
-                            .padding(end = 4.dp),
-                        tint = androidx.compose.ui.graphics.Color.Red
-                    )
                     Text(
-                        text = String.format("%.1f", favorite.imdb)
+                        text = favorite.title,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 4.dp)
                     )
+                    
+                    // Show type and year
+                    Text(
+                        text = "${favorite.type.capitalize()} • ${favorite.year}",
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                    
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Favorite,
+                            contentDescription = null,
+                            modifier = Modifier
+                                .size(16.dp)
+                                .padding(end = 4.dp),
+                            tint = androidx.compose.ui.graphics.Color.Red
+                        )
+                        Text(
+                            text = String.format("%.1f", favorite.imdb)
+                        )
+                    }
                 }
             }
             
             // Menu button for additional actions
-            Box {
+            Box(modifier = Modifier.padding(end = 16.dp)) {
                 IconButton(
                     onClick = { showMenu = true },
-                    modifier = Modifier.focusable()
+                    modifier = Modifier.focusRing(CircleShape)
                 ) {
                     Icon(
                         imageVector = Icons.Default.MoreVert,

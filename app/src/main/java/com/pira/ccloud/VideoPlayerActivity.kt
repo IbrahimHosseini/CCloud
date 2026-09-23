@@ -25,7 +25,6 @@ import kotlin.math.abs
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -75,15 +74,15 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -98,6 +97,8 @@ import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
+import com.pira.ccloud.components.focusOutline
+import com.pira.ccloud.components.focusRing
 import com.pira.ccloud.data.model.SubtitleSettings
 import com.pira.ccloud.data.model.VideoPlayerSettings
 import com.pira.ccloud.data.model.FontSettings
@@ -136,15 +137,6 @@ fun PlayerView.setSubtitleColors(settings: SubtitleSettings, typeface: Typeface?
     // Note: ExoPlayer's subtitle rendering has limited support for custom fonts.
     // The font may not be applied to all subtitle formats or on all Android versions.
     // This is a known limitation of ExoPlayer's subtitle rendering system.
-}
-
-// White outline on the player control that has D-pad focus, so it is visible from the couch.
-// Must come before the control's clickable so it observes that control's focus.
-private fun Modifier.focusRing(shape: Shape): Modifier = composed {
-    var isFocused by remember { mutableStateOf(false) }
-    this
-        .onFocusChanged { isFocused = it.isFocused }
-        .border(width = 2.dp, color = if (isFocused) Color.White else Color.Transparent, shape = shape)
 }
 
 class VideoPlayerActivity : ComponentActivity() {
@@ -691,18 +683,35 @@ fun VideoPlayerScreen(
     
     // Move D-pad focus into the controls once they are on screen
     LaunchedEffect(controlsFocusRequested, showControls) {
-        if (!controlsFocusRequested || !showControls) return@LaunchedEffect
-        try {
-            seekBarFocusRequester.requestFocus()
-        } catch (e: Exception) {
-            // The seek bar isn't shown while retrying, fall back to play/pause
+        if (!controlsFocusRequested) return@LaunchedEffect
+        // Nothing to focus while the controls are hidden; the next remote key reveals them
+        if (showControls) {
             try {
-                playPauseFocusRequester.requestFocus()
-            } catch (e2: Exception) {
-                // Ignore focus errors
+                seekBarFocusRequester.requestFocus()
+            } catch (e: Exception) {
+                // The seek bar isn't shown while retrying, fall back to play/pause
+                try {
+                    playPauseFocusRequester.requestFocus()
+                } catch (e2: Exception) {
+                    // Ignore focus errors
+                }
             }
         }
         controlsFocusRequested = false
+    }
+    
+    // With a remote (at start, or when switching to it after a mouse/touch), put focus on the
+    // seek bar like after any key press. Otherwise the system gives focus to the first control,
+    // Back, and OK would close the player.
+    val inputMode = LocalInputModeManager.current.inputMode
+    LaunchedEffect(inputMode) {
+        if (inputMode == InputMode.Keyboard) controlsFocusRequested = true
+    }
+    
+    // Retrying swaps the seek bar for a progress bar (and back). If the swapped-out control had
+    // focus, the system again hands focus to Back, so move it to the seek bar/play-pause instead.
+    LaunchedEffect(isRetrying) {
+        if (showControls && controlsHaveFocus) controlsFocusRequested = true
     }
     
     // Same approach as double-tap seeking: isSeeking keeps the re-buffering after a seek from
@@ -1037,7 +1046,7 @@ fun VideoPlayerScreen(
                                 color = Color.Black.copy(alpha = 0.7f),
                                 shape = androidx.compose.foundation.shape.CircleShape
                             )
-                            .focusRing(CircleShape)
+                            .focusRing(CircleShape, Color.White)
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -1055,7 +1064,7 @@ fun VideoPlayerScreen(
                                 color = Color.Black.copy(alpha = 0.7f),
                                 shape = androidx.compose.foundation.shape.CircleShape
                             )
-                            .focusRing(CircleShape)
+                            .focusRing(CircleShape, Color.White)
                             .align(Alignment.TopEnd)
                     ) {
                         Icon(
@@ -1082,7 +1091,7 @@ fun VideoPlayerScreen(
                                 shape = androidx.compose.foundation.shape.CircleShape
                             )
                             .focusRequester(playPauseFocusRequester)
-                            .focusRing(CircleShape)
+                            .focusRing(CircleShape, Color.White)
                     ) {
                         Icon(
                             imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
@@ -1144,11 +1153,7 @@ fun VideoPlayerScreen(
                                 .fillMaxWidth()
                                 .focusRequester(seekBarFocusRequester)
                                 .onFocusChanged { seekBarFocused = it.isFocused }
-                                .border(
-                                    width = 2.dp,
-                                    color = if (seekBarFocused) Color.White else Color.Transparent,
-                                    shape = RoundedCornerShape(8.dp)
-                                )
+                                .focusOutline(seekBarFocused, RoundedCornerShape(8.dp), Color.White)
                         )
                     }
                     
@@ -1173,7 +1178,7 @@ fun VideoPlayerScreen(
                                 color = Color.White,
                                 style = MaterialTheme.typography.bodySmall,
                                 modifier = Modifier
-                                    .focusRing(RoundedCornerShape(8.dp))
+                                    .focusRing(RoundedCornerShape(8.dp), Color.White)
                                     .clickable { 
                                         // Manual retry
                                         try {
@@ -1212,7 +1217,7 @@ fun VideoPlayerScreen(
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier
-                                        .focusRing(RoundedCornerShape(8.dp))
+                                        .focusRing(RoundedCornerShape(8.dp), Color.White)
                                         .clickable { showSpeedDropdown = true }
                                         .padding(4.dp)
                                 ) {
@@ -1265,7 +1270,7 @@ fun VideoPlayerScreen(
                                 style = MaterialTheme.typography.bodySmall,
                                 fontWeight = if (playbackSpeed == 1.0f) FontWeight.Bold else FontWeight.Normal,
                                 modifier = Modifier
-                                    .focusRing(RoundedCornerShape(8.dp))
+                                    .focusRing(RoundedCornerShape(8.dp), Color.White)
                                     .clickable { playbackSpeed = 1.0f }
                                     .padding(4.dp),
                                 fontFamily = FontManager.loadFontFamily(context, fontSettings.fontType)

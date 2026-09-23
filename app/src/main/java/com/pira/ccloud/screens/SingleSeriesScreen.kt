@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -66,6 +67,7 @@ import coil.request.ImageRequest
 import com.pira.ccloud.VideoPlayerActivity
 import com.pira.ccloud.components.DownloadOptionsDialog
 import com.pira.ccloud.components.ExpandableText
+import com.pira.ccloud.components.focusRing
 import com.pira.ccloud.data.model.FavoriteItem
 import com.pira.ccloud.data.model.Episode
 import com.pira.ccloud.data.model.Season
@@ -957,6 +959,7 @@ fun EpisodeItem(
                         onClick = { onDownloadClick() },
                         modifier = Modifier
                             .size(36.dp)
+                            .focusRing(CircleShape)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Download,
@@ -974,6 +977,7 @@ fun EpisodeItem(
                     onClick = { onPlayClick() },
                     modifier = Modifier
                         .size(36.dp)
+                        .focusRing(CircleShape)
                 ) {
                     Icon(
                         imageVector = Icons.Default.PlayArrow,
