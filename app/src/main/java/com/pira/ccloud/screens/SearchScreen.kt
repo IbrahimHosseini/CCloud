@@ -1,6 +1,7 @@
 package com.pira.ccloud.screens
 
 import android.content.Context
+import android.view.InputDevice
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -51,15 +52,26 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.InputMode
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalInputModeManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -84,11 +96,62 @@ fun SearchScreen(
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val inputModeManager = LocalInputModeManager.current
     val focusRequester = remember { FocusRequester() }
+    val resultsFocusRequester = remember { FocusRequester() }
     
-    // Request focus when the screen is first displayed to ensure keyboard opens on TV
+    // When navigating with a TV remote, focus where the user continues when the screen is
+    // displayed: the search field (focusing it opens the keyboard), or the results when coming
+    // back to them, e.g. from a movie page, so the keyboard doesn't pop up again. Skipped on
+    // touch devices so the keyboard doesn't open by itself on phones.
     LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
+        if (inputModeManager.inputMode != InputMode.Keyboard) return@LaunchedEffect
+        if (viewModel.searchResults.isEmpty()) {
+            focusRequester.requestFocus()
+        } else {
+            withFrameNanos { } // Let the results grid lay out its items first
+            try {
+                resultsFocusRequester.requestFocus()
+            } catch (e: IllegalStateException) {
+                // Results aren't on screen, e.g. a new search is loading
+            }
+        }
+    }
+    
+    // Close the keyboard after a search or clear. With a remote, keep focus on the field so the
+    // D-pad continues from there: clearing focus sends it back to the top of the screen, and
+    // moving over the field again would reopen the keyboard.
+    fun dismissKeyboard() {
+        if (inputModeManager.inputMode == InputMode.Keyboard) {
+            keyboardController?.hide()
+        } else {
+            focusManager.clearFocus()
+        }
+    }
+    
+    // Compose only treats remote keys as D-pad input when the remote reports itself as a D-pad
+    // device, which many Android TV box remotes don't. For keys from such remotes (not the
+    // on-screen keyboard or a full hardware keyboard): OK opens the keyboard and the arrows move
+    // focus out of the field instead of moving the text cursor.
+    fun handleRemoteKey(event: KeyEvent): Boolean {
+        val device = event.nativeKeyEvent.device
+        if (event.type != KeyEventType.KeyDown || device == null || device.isVirtual ||
+            device.keyboardType == InputDevice.KEYBOARD_TYPE_ALPHABETIC
+        ) {
+            return false
+        }
+        return when (event.key) {
+            Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+                keyboardController?.show()
+                true
+            }
+            Key.DirectionUp -> focusManager.moveFocus(FocusDirection.Up)
+            Key.DirectionDown -> focusManager.moveFocus(FocusDirection.Down)
+            Key.DirectionLeft -> focusManager.moveFocus(FocusDirection.Left)
+            Key.DirectionRight -> focusManager.moveFocus(FocusDirection.Right)
+            else -> false
+        }
     }
     
     Column(
@@ -100,13 +163,12 @@ fun SearchScreen(
         TextField(
             value = viewModel.searchQuery,
             onValueChange = { viewModel.updateSearchQuery(it) },
+            // No clickable here: it would be a separate focus target wrapping the text field, so
+            // D-pad focus would land on it and the field itself (and its keyboard) never got focus
             modifier = Modifier
                 .fillMaxWidth()
                 .focusRequester(focusRequester)
-                .clickable { 
-                    // Ensure keyboard opens when clicking on the TextField on TV
-                    focusRequester.requestFocus()
-                },
+                .onPreviewKeyEvent { handleRemoteKey(it) },
             placeholder = { 
                 Text(
                     text = "Search movies and series...",
@@ -118,7 +180,7 @@ fun SearchScreen(
                     // Trigger search when clicking search icon
                     if (viewModel.searchQuery.isNotEmpty()) {
                         viewModel.triggerSearch()
-                        focusManager.clearFocus()
+                        dismissKeyboard()
                     }
                 }) {
                     Icon(
@@ -132,7 +194,7 @@ fun SearchScreen(
                 if (viewModel.searchQuery.isNotEmpty()) {
                     IconButton(onClick = { 
                         viewModel.clearSearch()
-                        focusManager.clearFocus() // Dismiss keyboard when clearing search
+                        dismissKeyboard() // Dismiss keyboard when clearing search
                     }) {
                         Icon(
                             imageVector = Icons.Default.Clear,
@@ -151,7 +213,7 @@ fun SearchScreen(
                     if (viewModel.searchQuery.isNotEmpty()) {
                         viewModel.triggerSearch()
                     }
-                    focusManager.clearFocus()
+                    dismissKeyboard()
                 }
             ),
             colors = TextFieldDefaults.colors(
@@ -247,7 +309,8 @@ fun SearchScreen(
                 SearchResultsGrid(
                     posters = viewModel.searchResults,
                     navController = navController,
-                    context = context
+                    context = context,
+                    modifier = Modifier.focusRequester(resultsFocusRequester)
                 )
             }
             // Only show "No results found" after a search has been performed
@@ -344,12 +407,13 @@ fun CountryStoryItem(
 fun SearchResultsGrid(
     posters: List<Poster>,
     navController: NavController?,
-    context: Context
+    context: Context,
+    modifier: Modifier = Modifier
 ) {
     val columns = DeviceUtils.getGridColumns(LocalContext.current.resources)
     LazyVerticalGrid(
         columns = GridCells.Fixed(columns),
-        modifier = Modifier.fillMaxSize(),
+        modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(0.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)

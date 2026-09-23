@@ -14,6 +14,7 @@ import android.os.Looper
 import android.provider.Settings
 import android.util.TypedValue
 import android.view.GestureDetector
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
@@ -24,6 +25,7 @@ import kotlin.math.abs
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -38,6 +40,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -68,11 +71,17 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -129,6 +138,15 @@ fun PlayerView.setSubtitleColors(settings: SubtitleSettings, typeface: Typeface?
     // This is a known limitation of ExoPlayer's subtitle rendering system.
 }
 
+// White outline on the player control that has D-pad focus, so it is visible from the couch.
+// Must come before the control's clickable so it observes that control's focus.
+private fun Modifier.focusRing(shape: Shape): Modifier = composed {
+    var isFocused by remember { mutableStateOf(false) }
+    this
+        .onFocusChanged { isFocused = it.isFocused }
+        .border(width = 2.dp, color = if (isFocused) Color.White else Color.Transparent, shape = shape)
+}
+
 class VideoPlayerActivity : ComponentActivity() {
     companion object {
         const val EXTRA_VIDEO_URL = "video_url"
@@ -163,6 +181,8 @@ class VideoPlayerActivity : ComponentActivity() {
     private var playerInitialized = false
     private var isActivityResumed = false
     private var hasMarkedAsWatched = false
+    // Remote-control key handler registered by VideoPlayerScreen, which owns the controls state
+    private var playerKeyHandler: ((KeyEvent) -> Boolean)? = null
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -188,7 +208,8 @@ class VideoPlayerActivity : ComponentActivity() {
                     seriesId = seriesId,
                     seasonId = seasonId,
                     episodeId = episodeId,
-                    onBack = this::finish
+                    onBack = this::finish,
+                    onKeyHandlerChanged = { playerKeyHandler = it }
                 ) { player ->
                     exoPlayer = player
                     playerInitialized = true
@@ -199,44 +220,17 @@ class VideoPlayerActivity : ComponentActivity() {
         }
     }
     
-    // Handle TV remote control key events
-    override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
-        try {
-            exoPlayer?.let { player ->
-                when (keyCode) {
-                    android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
-                    android.view.KeyEvent.KEYCODE_DPAD_CENTER -> {
-                        player.playWhenReady = !player.playWhenReady
-                        return true
-                    }
-                    android.view.KeyEvent.KEYCODE_MEDIA_PLAY -> {
-                        player.playWhenReady = true
-                        return true
-                    }
-                    android.view.KeyEvent.KEYCODE_MEDIA_PAUSE -> {
-                        player.playWhenReady = false
-                        return true
-                    }
-                    android.view.KeyEvent.KEYCODE_DPAD_LEFT -> {
-                        val newPosition = (player.currentPosition - 10000).coerceAtLeast(0L) // Rewind 10 seconds
-                        player.seekTo(newPosition)
-                        return true
-                    }
-                    android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                        val newPosition = (player.currentPosition + 10000).coerceAtMost(player.duration) // Forward 10 seconds
-                        player.seekTo(newPosition)
-                        return true
-                    }
-                    android.view.KeyEvent.KEYCODE_BACK -> {
-                        finish()
-                        return true
-                    }
-                }
-            }
+    // Handle TV remote control key events. The player UI gets every key before the view
+    // hierarchy, so D-pad presses work even when no on-screen control has focus (e.g. while
+    // the controls are hidden). Back is left to the default handling, which closes the player.
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val handled = try {
+            playerKeyHandler?.invoke(event) == true
         } catch (e: Exception) {
             // Ignore key event errors
+            false
         }
-        return super.onKeyDown(keyCode, event)
+        return handled || super.dispatchKeyEvent(event)
     }
     
     private fun enableFullScreenMode() {
@@ -337,6 +331,7 @@ fun VideoPlayerScreen(
     seasonId: Int?,
     episodeId: Int?,
     onBack: () -> Unit,
+    onKeyHandlerChanged: (((KeyEvent) -> Boolean)?) -> Unit = {},
     onPlayerReady: (ExoPlayer) -> Unit
 ) {
     val context = LocalContext.current
@@ -359,6 +354,15 @@ fun VideoPlayerScreen(
     var showTrackSelectionDialog by remember { mutableStateOf(false) }
     var currentTracks by remember { mutableStateOf(Tracks.EMPTY) }
     var trackSelector by remember { mutableStateOf<DefaultTrackSelector?>(null) }
+    
+    // Remote (D-pad) navigation state
+    val playPauseFocusRequester = remember { FocusRequester() }
+    val seekBarFocusRequester = remember { FocusRequester() }
+    var controlsFocusRequested by remember { mutableStateOf(false) }
+    var controlsHaveFocus by remember { mutableStateOf(false) }
+    var seekBarFocused by remember { mutableStateOf(false) }
+    var controlsInteraction by remember { mutableStateOf(0) }
+    var keySeekCount by remember { mutableStateOf(0) }
     
     // Predefined playback speed options
     val speedOptions = remember {
@@ -638,10 +642,11 @@ fun VideoPlayerScreen(
         }
     }
     
-    // Hide controls after a delay
-    LaunchedEffect(showControls, isPlaying) {
+    // Hide controls after a delay. Every remote key press restarts the timer, and it doesn't run
+    // while the speed menu or track dialog is open (their keys never reach the activity).
+    LaunchedEffect(showControls, isPlaying, controlsInteraction, showSpeedDropdown, showTrackSelectionDialog) {
         try {
-            if (showControls && isPlaying) {
+            if (showControls && isPlaying && !showSpeedDropdown && !showTrackSelectionDialog) {
                 delay(3000) // Hide controls after 3 seconds
                 showControls = false
             }
@@ -682,6 +687,141 @@ fun VideoPlayerScreen(
                 // Ignore release errors
             }
         }
+    }
+    
+    // Move D-pad focus into the controls once they are on screen
+    LaunchedEffect(controlsFocusRequested, showControls) {
+        if (!controlsFocusRequested || !showControls) return@LaunchedEffect
+        try {
+            seekBarFocusRequester.requestFocus()
+        } catch (e: Exception) {
+            // The seek bar isn't shown while retrying, fall back to play/pause
+            try {
+                playPauseFocusRequester.requestFocus()
+            } catch (e2: Exception) {
+                // Ignore focus errors
+            }
+        }
+        controlsFocusRequested = false
+    }
+    
+    // Same approach as double-tap seeking: isSeeking keeps the re-buffering after a seek from
+    // flipping isPlaying, and the play state is restored once the remote seeks stop
+    LaunchedEffect(keySeekCount) {
+        if (keySeekCount == 0) return@LaunchedEffect
+        try {
+            delay(500)
+            isSeeking = false
+            exoPlayer?.playWhenReady = wasPlayingBeforeSeek
+            isPlaying = wasPlayingBeforeSeek
+        } catch (e: Exception) {
+            // Ignore errors
+        }
+    }
+    
+    // Shows the controls with D-pad focus on the seek bar, where left/right seek and OK plays/pauses
+    fun revealControls() {
+        showControls = true
+        controlsFocusRequested = true
+    }
+    
+    // Seeks by the seek time from settings, like double-tap seeking
+    fun seekByKey(forward: Boolean) {
+        val player = exoPlayer ?: return
+        if (!isSeeking) {
+            wasPlayingBeforeSeek = isPlaying
+            isSeeking = true
+        }
+        val seekTimeMs = videoPlayerSettings.seekTimeSeconds * 1000L
+        val target = player.currentPosition + if (forward) seekTimeMs else -seekTimeMs
+        val knownDuration = player.duration.takeIf { it != C.TIME_UNSET }
+        val newPosition = if (knownDuration != null) target.coerceIn(0L, knownDuration) else target.coerceAtLeast(0L)
+        player.seekTo(newPosition)
+        currentPosition = newPosition
+        if (forward) showForwardIndicator = true else showRewindIndicator = true
+        keySeekCount++
+    }
+    
+    // TV remote handling; the activity calls this before any view sees the key.
+    // While no control has focus (controls hidden, or shown by a tap): OK plays/pauses, left/right
+    // seek, up/down do nothing else - and each of them shows the controls with focus on the seek
+    // bar, where left/right keep seeking and OK keeps playing/pausing. On the other controls the
+    // arrows move focus and OK clicks.
+    val consumedKeys = remember { mutableSetOf<Int>() }
+    val handleKeyEvent: (KeyEvent) -> Boolean = handler@{ event ->
+        val keyCode = event.keyCode
+        when (event.action) {
+            // Also swallow the release of a key handled on press, otherwise it would click the
+            // control that just received focus
+            KeyEvent.ACTION_UP -> return@handler consumedKeys.remove(keyCode)
+            KeyEvent.ACTION_DOWN -> Unit
+            else -> return@handler false
+        }
+        controlsInteraction++ // Keep the controls on screen while the remote is in use
+    
+        if (event.repeatCount > 0) {
+            // Key held down: keep seeking if its first press seeked, ignore other repeats
+            if (keyCode !in consumedKeys) return@handler false
+            when (keyCode) {
+                KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> seekByKey(forward = false)
+                KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> seekByKey(forward = true)
+            }
+            return@handler true
+        }
+    
+        consumedKeys.remove(keyCode)
+        val focusInControls = showControls && controlsHaveFocus
+        val seekBarHasFocus = focusInControls && seekBarFocused && !isRetrying
+        val handled = when (keyCode) {
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE -> {
+                isPlaying = when (keyCode) {
+                    KeyEvent.KEYCODE_MEDIA_PLAY -> true
+                    KeyEvent.KEYCODE_MEDIA_PAUSE -> false
+                    else -> !isPlaying
+                }
+                if (!focusInControls) revealControls()
+                true
+            }
+            KeyEvent.KEYCODE_MEDIA_REWIND, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
+                seekByKey(forward = keyCode == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD)
+                if (!focusInControls) revealControls()
+                true
+            }
+            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                if (!focusInControls || seekBarHasFocus) {
+                    seekByKey(forward = keyCode == KeyEvent.KEYCODE_DPAD_RIGHT)
+                    if (!focusInControls) revealControls()
+                    true
+                } else {
+                    false // Move focus between the controls
+                }
+            }
+            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                if (!focusInControls || seekBarHasFocus) {
+                    isPlaying = !isPlaying
+                    if (!focusInControls) revealControls()
+                    true
+                } else {
+                    false // Click the focused control
+                }
+            }
+            KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> {
+                if (!focusInControls) {
+                    revealControls()
+                    true
+                } else {
+                    false // Move focus between the controls
+                }
+            }
+            else -> false
+        }
+        if (handled) consumedKeys.add(keyCode)
+        handled
+    }
+    val currentHandleKeyEvent by rememberUpdatedState(handleKeyEvent)
+    DisposableEffect(Unit) {
+        onKeyHandlerChanged { event -> currentHandleKeyEvent(event) }
+        onDispose { onKeyHandlerChanged(null) }
     }
     
     Box(
@@ -881,6 +1021,7 @@ fun VideoPlayerScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.5f))
+                    .onFocusChanged { controlsHaveFocus = it.hasFocus }
             ) {
                 // Top bar with back button and settings
                 Box(
@@ -896,6 +1037,7 @@ fun VideoPlayerScreen(
                                 color = Color.Black.copy(alpha = 0.7f),
                                 shape = androidx.compose.foundation.shape.CircleShape
                             )
+                            .focusRing(CircleShape)
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -913,6 +1055,7 @@ fun VideoPlayerScreen(
                                 color = Color.Black.copy(alpha = 0.7f),
                                 shape = androidx.compose.foundation.shape.CircleShape
                             )
+                            .focusRing(CircleShape)
                             .align(Alignment.TopEnd)
                     ) {
                         Icon(
@@ -938,6 +1081,8 @@ fun VideoPlayerScreen(
                                 color = Color.Black.copy(alpha = 0.7f),
                                 shape = androidx.compose.foundation.shape.CircleShape
                             )
+                            .focusRequester(playPauseFocusRequester)
+                            .focusRing(CircleShape)
                     ) {
                         Icon(
                             imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
@@ -995,7 +1140,15 @@ fun VideoPlayerScreen(
                                     // Ignore errors
                                 }
                             },
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(seekBarFocusRequester)
+                                .onFocusChanged { seekBarFocused = it.isFocused }
+                                .border(
+                                    width = 2.dp,
+                                    color = if (seekBarFocused) Color.White else Color.Transparent,
+                                    shape = RoundedCornerShape(8.dp)
+                                )
                         )
                     }
                     
@@ -1020,6 +1173,7 @@ fun VideoPlayerScreen(
                                 color = Color.White,
                                 style = MaterialTheme.typography.bodySmall,
                                 modifier = Modifier
+                                    .focusRing(RoundedCornerShape(8.dp))
                                     .clickable { 
                                         // Manual retry
                                         try {
@@ -1058,6 +1212,7 @@ fun VideoPlayerScreen(
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier
+                                        .focusRing(RoundedCornerShape(8.dp))
                                         .clickable { showSpeedDropdown = true }
                                         .padding(4.dp)
                                 ) {
@@ -1110,6 +1265,7 @@ fun VideoPlayerScreen(
                                 style = MaterialTheme.typography.bodySmall,
                                 fontWeight = if (playbackSpeed == 1.0f) FontWeight.Bold else FontWeight.Normal,
                                 modifier = Modifier
+                                    .focusRing(RoundedCornerShape(8.dp))
                                     .clickable { playbackSpeed = 1.0f }
                                     .padding(4.dp),
                                 fontFamily = FontManager.loadFontFamily(context, fontSettings.fontType)
