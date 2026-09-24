@@ -54,10 +54,10 @@ fun AppNavigation(
             val isSystemInDarkMode = isSystemInDarkTheme()
             SplashScreen(
                 onTimeout = {
-                    navController.popBackStack()
+                    // Movies replaces the splash, and stays at the bottom of the back stack (see
+                    // navigateToTab)
                     navController.navigate(AppScreens.Movies.route) {
-                        // Prevent re-adding splash to back stack
-                        launchSingleTop = true
+                        popUpTo(AppScreens.Splash.route) { inclusive = true }
                     }
                 },
                 backgroundColor = when (themeSettings.themeMode) {
