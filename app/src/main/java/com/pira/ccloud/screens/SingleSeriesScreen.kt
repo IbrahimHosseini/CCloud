@@ -46,6 +46,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -60,6 +61,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import coil.compose.rememberAsyncImagePainter
@@ -93,6 +95,8 @@ fun SingleSeriesScreen(
     var showSourceDialog by remember { mutableStateOf(false) }
     var showDownloadMenu by remember { mutableStateOf(false) }
     var downloadSources by remember { mutableStateOf<List<Source>>(emptyList()) }
+    // The season whose episodes are listed, and so the one an episode is played (and marked as
+    // watched) in
     var selectedSeasonIndex by remember { mutableStateOf(0) }
     
     LaunchedEffect(seriesId) {
@@ -143,6 +147,8 @@ fun SingleSeriesScreen(
         SeriesDetailsContent(
             series = series!!,
             seasonsViewModel = seasonsViewModel,
+            selectedSeasonIndex = selectedSeasonIndex,
+            onSeasonSelected = { selectedSeasonIndex = it },
             onBackClick = { navController.popBackStack() },
             onEpisodeClick = { episode ->
                 if (episode.sources.isNotEmpty() && series != null) {
@@ -395,6 +401,8 @@ fun DownloadMenu(
 fun SeriesDetailsContent(
     series: Series,
     seasonsViewModel: SeasonsViewModel,
+    selectedSeasonIndex: Int,
+    onSeasonSelected: (Int) -> Unit,
     onBackClick: () -> Unit,
     onEpisodeClick: (Episode) -> Unit,
     onDownloadClick: (Episode) -> Unit,
@@ -402,9 +410,14 @@ fun SeriesDetailsContent(
 ) {
     val context = LocalContext.current
     val layoutDirection = LocalLayoutDirection.current
-    var selectedSeasonIndex by remember { mutableStateOf(0) }
     var showEpisodeImageDialog by remember { mutableStateOf(false) }
     var episodeImageUrl by remember { mutableStateOf("") }
+    // The player marks episodes as watched, so read the marks again when coming back from it
+    var watchedMarksVersion by remember { mutableIntStateOf(0) }
+    LifecycleResumeEffect(Unit) {
+        watchedMarksVersion++
+        onPauseOrDispose { }
+    }
     
     // Not a LazyColumn: that wouldn't compose the episodes until they're scrolled to, so focus
     // couldn't start on the first one (see ScreenFocus)
@@ -742,7 +755,7 @@ fun SeriesDetailsContent(
                     val season = seasonsViewModel.seasons[index]
                     Card(
                         modifier = Modifier
-                            .clickable { selectedSeasonIndex = index },
+                            .clickable { onSeasonSelected(index) },
                         colors = CardDefaults.cardColors(
                             containerColor = if (selectedSeasonIndex == index) 
                                 MaterialTheme.colorScheme.primary 
@@ -816,7 +829,9 @@ fun SeriesDetailsContent(
                 )
                 
                 selectedSeason.episodes.forEachIndexed { index, episode ->
-                    val isEpisodeWatched = StorageUtils.isEpisodeWatched(context, series.id, selectedSeason.id, episode.id)
+                    val isEpisodeWatched = remember(watchedMarksVersion, selectedSeason.id, episode.id) {
+                        StorageUtils.isEpisodeWatched(context, series.id, selectedSeason.id, episode.id)
+                    }
                     EpisodeItem(
                         episode = episode,
                         isWatched = isEpisodeWatched,
