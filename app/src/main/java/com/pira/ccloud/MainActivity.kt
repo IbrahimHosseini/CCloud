@@ -40,6 +40,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.google.accompanist.systemuicontroller.rememberSystemUiController
+import com.pira.ccloud.components.ScreenFocusHost
 import com.pira.ccloud.navigation.AppNavigation
 import com.pira.ccloud.navigation.AppScreens
 import com.pira.ccloud.navigation.BottomNavigationBar
@@ -133,41 +134,44 @@ fun MainScreen(
         )
     }
     
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        bottomBar = {
-            // Only show bottom bar if the current screen requires it and we're not on splash
-            // and we're not on TV (TV uses sidebar instead)
-            if (!isTv && currentScreen.showBottomBar && currentRoute != AppScreens.Splash.route) {
-                BottomNavigationBar(navController)
+    // Lets each screen move D-pad focus into itself when it's shown (see AppNavigation)
+    ScreenFocusHost {
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            bottomBar = {
+                // Only show bottom bar if the current screen requires it and we're not on splash
+                // and we're not on TV (TV uses sidebar instead)
+                if (!isTv && currentScreen.showBottomBar && currentRoute != AppScreens.Splash.route) {
+                    BottomNavigationBar(navController)
+                }
             }
-        }
-    ) { innerPadding ->
-        if (isTv) {
-            // TV layout with sidebar navigation
-            Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-            ) {
-                // Sidebar navigation for TV
-                SidebarNavigation(navController)
-                
-                // Main content area with padding to separate from sidebar
-                Box(
+        ) { innerPadding ->
+            if (isTv) {
+                // TV layout with sidebar navigation
+                Row(
                     modifier = Modifier
-                        .weight(1f)
-                        .padding(start = 16.dp, end = 24.dp, top = 24.dp, bottom = 24.dp)
+                        .fillMaxSize()
+                        .padding(innerPadding)
                 ) {
+                    // Sidebar navigation for TV
+                    SidebarNavigation(navController)
+                    
+                    // Main content area with padding to separate from sidebar
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(start = 16.dp, end = 24.dp, top = 24.dp, bottom = 24.dp)
+                    ) {
+                        // Pass theme settings and font settings callback to navigation
+                        AppNavigation(navController, onThemeSettingsChanged, onFontSettingsChanged)
+                    }
+                }
+            } else {
+                // Mobile/tablet layout with bottom navigation
+                Box(modifier = Modifier.padding(innerPadding)) {
                     // Pass theme settings and font settings callback to navigation
                     AppNavigation(navController, onThemeSettingsChanged, onFontSettingsChanged)
                 }
-            }
-        } else {
-            // Mobile/tablet layout with bottom navigation
-            Box(modifier = Modifier.padding(innerPadding)) {
-                // Pass theme settings and font settings callback to navigation
-                AppNavigation(navController, onThemeSettingsChanged, onFontSettingsChanged)
             }
         }
     }

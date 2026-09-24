@@ -29,7 +29,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
-import androidx.navigation.NavGraph.Companion.findStartDestination
 
 @Composable
 fun BottomNavigationBar(navController: NavController) {
@@ -105,17 +104,7 @@ fun BottomNavigationBar(navController: NavController) {
                 onClick = {
                     // Only navigate if we're not already on the selected screen
                     if (currentRoute != screen.route) {
-                        navController.navigate(screen.route) {
-                            // Avoid multiple copies of the same destination when
-                            // reselecting the same item
-                            launchSingleTop = true
-                            // Restore state when reselecting a previously selected item
-                            restoreState = true
-                            // Pop up to the current destination to avoid building up a large stack
-                            popUpTo(navController.graph.findStartDestination().id) {
-                                saveState = true
-                            }
-                        }
+                        navController.navigateToTab(screen.route)
                     }
                 },
                 colors = NavigationBarItemDefaults.colors(

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -64,6 +65,8 @@ import coil.request.ImageRequest
 import com.pira.ccloud.VideoPlayerActivity
 import com.pira.ccloud.components.DownloadOptionsDialog
 import com.pira.ccloud.components.ExpandableText
+import com.pira.ccloud.components.focusRing
+import com.pira.ccloud.components.initialFocus
 import com.pira.ccloud.data.model.FavoriteItem
 import com.pira.ccloud.data.model.Movie
 import com.pira.ccloud.data.model.Source
@@ -105,7 +108,10 @@ fun SingleMovieScreen(
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                IconButton(onClick = { navController.popBackStack() }) {
+                IconButton(
+                    onClick = { navController.popBackStack() },
+                    modifier = Modifier.initialFocus().focusRing(CircleShape)
+                ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Back"
@@ -298,6 +304,9 @@ fun MovieDetailsContent(
                 modifier = Modifier
                     .padding(16.dp)
                     .align(Alignment.TopStart)
+                    .focusRing(CircleShape)
+                    // Where focus starts when there's no quality to focus
+                    .initialFocus(enabled = movie.sources.isEmpty())
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -378,6 +387,7 @@ fun MovieDetailsContent(
                 modifier = Modifier
                     .padding(16.dp)
                     .align(Alignment.TopEnd)
+                    .focusRing(CircleShape)
             ) {
                 Icon(
                     imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
@@ -472,10 +482,13 @@ fun MovieDetailsContent(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.padding(start = 16.dp, end = 16.dp)
             ) {
-                movie.sources.forEach { source ->
+                movie.sources.forEachIndexed { index, source ->
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
+                            // Focus starts on the first quality when the screen is shown
+                            .initialFocus(enabled = index == 0)
+                            .focusRing(RoundedCornerShape(12.dp))
                             .clickable {
                                 selectedSource = source
                                 showSourceDialog = true

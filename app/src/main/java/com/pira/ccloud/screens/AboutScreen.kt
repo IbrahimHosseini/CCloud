@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -43,6 +44,8 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.pira.ccloud.BuildConfig
 import com.pira.ccloud.R
+import com.pira.ccloud.components.focusRing
+import com.pira.ccloud.components.initialFocus
 
 @Composable
 fun AboutScreen(navController: NavController?) {
@@ -59,7 +62,11 @@ fun AboutScreen(navController: NavController?) {
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = { navController?.popBackStack() }) {
+            IconButton(
+                onClick = { navController?.popBackStack() },
+                // Where focus starts when the screen is shown
+                modifier = Modifier.initialFocus().focusRing(CircleShape)
+            ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "Back"
