@@ -71,6 +71,8 @@ import coil.request.ImageRequest
 import com.pira.ccloud.R
 import com.pira.ccloud.components.focusOutline
 import com.pira.ccloud.components.focusRing
+import com.pira.ccloud.components.initialFocus
+import com.pira.ccloud.components.restorableFocus
 import com.pira.ccloud.data.model.FavoriteGroup
 import com.pira.ccloud.data.model.FavoriteItem
 import com.pira.ccloud.navigation.AppScreens
@@ -506,6 +508,8 @@ fun FavoritesScreen(navController: NavController) {
                     modifier = Modifier
                         .size(48.dp)
                         .focusRing(CircleShape)
+                        // Where focus starts when there are no favorites to focus
+                        .initialFocus(enabled = favorites.isEmpty())
                 ) {
                     Icon(
                         imageVector = Icons.Default.Add,
@@ -744,7 +748,9 @@ fun FavoritesScreen(navController: NavController) {
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {                     
                         LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
+                            // When the screen is shown, focus goes to its top visible item (see
+                            // ScreenFocus)
+                            modifier = Modifier.fillMaxSize().initialFocus(),
                             contentPadding = PaddingValues(0.dp),
                             verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp)
                         ) {
@@ -809,6 +815,8 @@ fun FavoriteItemCard(
             Row(
                 modifier = Modifier
                     .weight(1f)
+                    // Focus returns here when coming back from its page
+                    .restorableFocus("${favorite.type}_${favorite.id}")
                     .onFocusChanged { isContentFocused = it.isFocused }
                     .clickable { onClick() }
                     .padding(start = 16.dp, top = 16.dp, bottom = 16.dp),

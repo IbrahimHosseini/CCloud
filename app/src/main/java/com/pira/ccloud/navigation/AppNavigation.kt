@@ -8,6 +8,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import com.pira.ccloud.components.ScreenFocus
 import com.pira.ccloud.screens.AboutScreen
 import com.pira.ccloud.screens.MoviesScreen
 import com.pira.ccloud.screens.SearchScreen
@@ -43,6 +44,8 @@ fun AppNavigation(
     val searchViewModel = viewModel<SearchViewModel>()
     val countryViewModel = viewModel<CountryViewModel>()
     
+    // Each screen except the splash is wrapped in ScreenFocus, so D-pad focus moves into it when
+    // it's shown instead of going to the sidebar
     NavHost(
         navController = navController,
         startDestination = AppScreens.Splash.route
@@ -76,43 +79,47 @@ fun AppNavigation(
         }
         
         composable(route = AppScreens.Movies.route) {
-            MoviesScreen(viewModel = moviesViewModel, navController = navController)
+            ScreenFocus { MoviesScreen(viewModel = moviesViewModel, navController = navController) }
         }
         composable(route = AppScreens.Series.route) {
-            SeriesScreen(viewModel = seriesViewModel, navController = navController)
+            ScreenFocus { SeriesScreen(viewModel = seriesViewModel, navController = navController) }
         }
         composable(route = AppScreens.Search.route) {
-            SearchScreen(viewModel = searchViewModel, navController = navController)
+            ScreenFocus { SearchScreen(viewModel = searchViewModel, navController = navController) }
         }
         composable(route = AppScreens.Settings.route) {
-            SettingsScreen(onThemeSettingsChanged, onFontSettingsChanged, navController) // Pass font settings callback
+            ScreenFocus {
+                SettingsScreen(onThemeSettingsChanged, onFontSettingsChanged, navController) // Pass font settings callback
+            }
         }
         composable(route = AppScreens.Favorites.route) {
-            FavoritesScreen(navController)
+            ScreenFocus { FavoritesScreen(navController) }
         }
         composable(route = AppScreens.About.route) {
-            AboutScreen(navController)
+            ScreenFocus { AboutScreen(navController) }
         }
         composable(
             route = AppScreens.SingleMovie.route,
             arguments = listOf(navArgument("movieId") { defaultValue = "0" })
         ) { backStackEntry ->            
             val movieId = backStackEntry.arguments?.getString("movieId")?.toIntOrNull() ?: 0
-            SingleMovieScreen(movieId = movieId, navController = navController)
+            ScreenFocus { SingleMovieScreen(movieId = movieId, navController = navController) }
         }
         composable(
             route = AppScreens.SingleSeries.route,
             arguments = listOf(navArgument("seriesId") { defaultValue = "0" })
         ) { backStackEntry ->
             val seriesId = backStackEntry.arguments?.getString("seriesId")?.toIntOrNull() ?: 0
-            SingleSeriesScreen(seriesId = seriesId, navController = navController)
+            ScreenFocus { SingleSeriesScreen(seriesId = seriesId, navController = navController) }
         }
         composable(
             route = AppScreens.Country.route,
             arguments = listOf(navArgument("countryId") { defaultValue = "0" })
         ) { backStackEntry ->
             val countryId = backStackEntry.arguments?.getString("countryId")?.toIntOrNull() ?: 0
-            CountryScreen(countryId = countryId, viewModel = countryViewModel, navController = navController)
+            ScreenFocus {
+                CountryScreen(countryId = countryId, viewModel = countryViewModel, navController = navController)
+            }
         }
     }
 }

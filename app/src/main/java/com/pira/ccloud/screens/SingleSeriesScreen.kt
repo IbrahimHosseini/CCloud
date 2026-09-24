@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -33,6 +32,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -68,6 +68,7 @@ import com.pira.ccloud.VideoPlayerActivity
 import com.pira.ccloud.components.DownloadOptionsDialog
 import com.pira.ccloud.components.ExpandableText
 import com.pira.ccloud.components.focusRing
+import com.pira.ccloud.components.initialFocus
 import com.pira.ccloud.data.model.FavoriteItem
 import com.pira.ccloud.data.model.Episode
 import com.pira.ccloud.data.model.Season
@@ -187,7 +188,10 @@ fun SingleSeriesScreen(
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                IconButton(onClick = { navController.popBackStack() }) {
+                IconButton(
+                    onClick = { navController.popBackStack() },
+                    modifier = Modifier.initialFocus().focusRing(CircleShape)
+                ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Back"
@@ -402,195 +406,92 @@ fun SeriesDetailsContent(
     var showEpisodeImageDialog by remember { mutableStateOf(false) }
     var episodeImageUrl by remember { mutableStateOf("") }
     
-    LazyColumn(
+    // Not a LazyColumn: that wouldn't compose the episodes until they're scrolled to, so focus
+    // couldn't start on the first one (see ScreenFocus)
+    Column(
         modifier = modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
     ) {
-        item {
-            // Series header with background cover and foreground image
+        // Series header with background cover and foreground image
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(300.dp)
+        ) {
+            // Background cover image (blurred)
+            Image(
+                painter = rememberAsyncImagePainter(
+                    ImageRequest.Builder(LocalContext.current)
+                        .data(series.cover)
+                        .crossfade(true)
+                        .build()
+                ),
+                contentDescription = null,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.surface),
+                contentScale = ContentScale.Crop
+            )
+            
+            // Gradient overlay for better text visibility
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(300.dp)
+                    .fillMaxSize()
+                    .background(
+                        androidx.compose.ui.graphics.Brush.verticalGradient(
+                            colors = listOf(
+                                MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
+                                MaterialTheme.colorScheme.surface
+                            )
+                        )
+                    )
+            )
+            
+            // Row to contain poster and series details side by side
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.Bottom
             ) {
-                // Background cover image (blurred)
+                // Foreground series poster
+                var showImageDialog by remember { mutableStateOf(false) }
+                
                 Image(
                     painter = rememberAsyncImagePainter(
                         ImageRequest.Builder(LocalContext.current)
-                            .data(series.cover)
+                            .data(series.image)
                             .crossfade(true)
                             .build()
                     ),
-                    contentDescription = null,
+                    contentDescription = series.title,
                     modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.surface),
-                    contentScale = ContentScale.Crop
+                        .height(200.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { showImageDialog = true },
+                    contentScale = ContentScale.Fit
                 )
                 
-                // Gradient overlay for better text visibility
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            androidx.compose.ui.graphics.Brush.verticalGradient(
-                                colors = listOf(
-                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
-                                    MaterialTheme.colorScheme.surface
-                                )
-                            )
-                        )
-                )
-                
-                // Row to contain poster and series details side by side
-                Row(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.Bottom
-                ) {
-                    // Foreground series poster
-                    var showImageDialog by remember { mutableStateOf(false) }
-                    
-                    Image(
-                        painter = rememberAsyncImagePainter(
-                            ImageRequest.Builder(LocalContext.current)
-                                .data(series.image)
-                                .crossfade(true)
-                                .build()
-                        ),
-                        contentDescription = series.title,
-                        modifier = Modifier
-                            .height(200.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { showImageDialog = true },
-                        contentScale = ContentScale.Fit
-                    )
-                    
-                    // Image URL dialog
-                    if (showImageDialog) {
-                        AlertDialog(
-                            onDismissRequest = { showImageDialog = false },
-                            title = { Text("Image Options") },
-                            text = { Text("Choose an action for this image") },
-                            confirmButton = {
-                                TextButton(
-                                    onClick = {
-                                        DownloadUtils.copyToClipboard(context, series.image)
-                                        showImageDialog = false
-                                    }
-                                ) {
-                                    Text("Copy Image URL")
-                                }
-                            },
-                            dismissButton = {
-                                TextButton(
-                                    onClick = { showImageDialog = false }
-                                ) {
-                                    Text("Cancel")
-                                }
-                            }
-                        )
-                    }
-                    
-                    // Series details to the right of the poster
-                    Column(
-                        modifier = Modifier
-                            .padding(start = 16.dp)
-                            .weight(1f)
-                    ) {
-                        // Series title
-                        Text(
-                            text = series.title,
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        
-                        // Country and year
-                        val countryText = if (series.country.isNotEmpty()) {
-                            "${series.country.joinToString(", ") { it.title }} (${series.year})"
-                        } else {
-                            "(${series.year})"
-                        }
-                        
-                        Text(
-                            text = countryText,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        
-                        // Rating
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Star,
-                                contentDescription = "Rating",
-                                tint = Color.Yellow,
-                                modifier = Modifier.size(24.dp)
-                            )
-                            
-                            Spacer(modifier = Modifier.width(8.dp))
-                            
-                            Text(
-                                text = String.format("%.1f", series.imdb),
-                                style = MaterialTheme.typography.headlineSmall,
-                                fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    }
-                }
-                
-                // Back button
-                IconButton(
-                    onClick = onBackClick,
-                    modifier = Modifier
-                        .padding(16.dp)
-                        .align(Alignment.TopStart)
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
-                        tint = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-                
-                // Favorite button
-                var isFavorite by remember { mutableStateOf(false) }
-                val context = LocalContext.current
-                val seriesId = series.id
-                
-                // Check if series is already favorite
-                LaunchedEffect(seriesId) {
-                    isFavorite = StorageUtils.isFavorite(context, seriesId, "series")
-                }
-                
-                var showRemoveFavoriteDialog by remember { mutableStateOf(false) }
-                
-                // Confirmation dialog for removing from favorites
-                if (showRemoveFavoriteDialog) {
+                // Image URL dialog
+                if (showImageDialog) {
                     AlertDialog(
-                        onDismissRequest = { showRemoveFavoriteDialog = false },
-                        title = { Text("Remove from Favorites") },
-                        text = { Text("Are you sure you want to remove this series from your favorites?") },
+                        onDismissRequest = { showImageDialog = false },
+                        title = { Text("Image Options") },
+                        text = { Text("Choose an action for this image") },
                         confirmButton = {
                             TextButton(
                                 onClick = {
-                                    StorageUtils.removeFavorite(context, seriesId, "series")
-                                    isFavorite = false
-                                    showRemoveFavoriteDialog = false
-                                    // Show toast
-                                    android.widget.Toast.makeText(context, "Removed from favorites", android.widget.Toast.LENGTH_SHORT).show()
+                                    DownloadUtils.copyToClipboard(context, series.image)
+                                    showImageDialog = false
                                 }
                             ) {
-                                Text("Remove")
+                                Text("Copy Image URL")
                             }
                         },
                         dismissButton = {
                             TextButton(
-                                onClick = { showRemoveFavoriteDialog = false }
+                                onClick = { showImageDialog = false }
                             ) {
                                 Text("Cancel")
                             }
@@ -598,170 +499,272 @@ fun SeriesDetailsContent(
                     )
                 }
                 
-                IconButton(
-                    onClick = {
-                        if (isFavorite) {
-                            // Show confirmation dialog instead of directly removing
-                            showRemoveFavoriteDialog = true
-                        } else {
-                            // Convert series to favorite item
-                            val favoriteItem = FavoriteItem(
-                                id = series.id,
-                                type = "series",
-                                title = series.title,
-                                description = series.description,
-                                year = series.year,
-                                imdb = series.imdb,
-                                rating = series.rating,
-                                duration = series.duration,
-                                image = series.image,
-                                cover = series.cover,
-                                genres = series.genres,
-                                country = series.country
-                            )
-                            StorageUtils.saveFavorite(context, favoriteItem)
-                            isFavorite = true
-                            // Show toast
-                            android.widget.Toast.makeText(context, "Added to favorites", android.widget.Toast.LENGTH_SHORT).show()
+                // Series details to the right of the poster
+                Column(
+                    modifier = Modifier
+                        .padding(start = 16.dp)
+                        .weight(1f)
+                ) {
+                    // Series title
+                    Text(
+                        text = series.title,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    
+                    // Country and year
+                    val countryText = if (series.country.isNotEmpty()) {
+                        "${series.country.joinToString(", ") { it.title }} (${series.year})"
+                    } else {
+                        "(${series.year})"
+                    }
+                    
+                    Text(
+                        text = countryText,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    
+                    // Rating
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Star,
+                            contentDescription = "Rating",
+                            tint = Color.Yellow,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        
+                        Spacer(modifier = Modifier.width(8.dp))
+                        
+                        Text(
+                            text = String.format("%.1f", series.imdb),
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            }
+            
+            // Back button
+            IconButton(
+                onClick = onBackClick,
+                modifier = Modifier
+                    .padding(16.dp)
+                    .align(Alignment.TopStart)
+                    .focusRing(CircleShape)
+                    // Where focus starts when the series turns out to have no seasons
+                    .initialFocus(
+                        enabled = !seasonsViewModel.isLoading &&
+                            seasonsViewModel.errorMessage == null &&
+                            seasonsViewModel.seasons.isEmpty()
+                    )
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    tint = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            
+            // Favorite button
+            var isFavorite by remember { mutableStateOf(false) }
+            val context = LocalContext.current
+            val seriesId = series.id
+            
+            // Check if series is already favorite
+            LaunchedEffect(seriesId) {
+                isFavorite = StorageUtils.isFavorite(context, seriesId, "series")
+            }
+            
+            var showRemoveFavoriteDialog by remember { mutableStateOf(false) }
+            
+            // Confirmation dialog for removing from favorites
+            if (showRemoveFavoriteDialog) {
+                AlertDialog(
+                    onDismissRequest = { showRemoveFavoriteDialog = false },
+                    title = { Text("Remove from Favorites") },
+                    text = { Text("Are you sure you want to remove this series from your favorites?") },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                StorageUtils.removeFavorite(context, seriesId, "series")
+                                isFavorite = false
+                                showRemoveFavoriteDialog = false
+                                // Show toast
+                                android.widget.Toast.makeText(context, "Removed from favorites", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        ) {
+                            Text("Remove")
                         }
                     },
-                    modifier = Modifier
-                        .padding(16.dp)
-                        .align(Alignment.TopEnd)
-                ) {
-                    Icon(
-                        imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                        contentDescription = "Favorite",
-                        tint = if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                    )
-                }
+                    dismissButton = {
+                        TextButton(
+                            onClick = { showRemoveFavoriteDialog = false }
+                        ) {
+                            Text("Cancel")
+                        }
+                    }
+                )
+            }
+            
+            IconButton(
+                onClick = {
+                    if (isFavorite) {
+                        // Show confirmation dialog instead of directly removing
+                        showRemoveFavoriteDialog = true
+                    } else {
+                        // Convert series to favorite item
+                        val favoriteItem = FavoriteItem(
+                            id = series.id,
+                            type = "series",
+                            title = series.title,
+                            description = series.description,
+                            year = series.year,
+                            imdb = series.imdb,
+                            rating = series.rating,
+                            duration = series.duration,
+                            image = series.image,
+                            cover = series.cover,
+                            genres = series.genres,
+                            country = series.country
+                        )
+                        StorageUtils.saveFavorite(context, favoriteItem)
+                        isFavorite = true
+                        // Show toast
+                        android.widget.Toast.makeText(context, "Added to favorites", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                },
+                modifier = Modifier
+                    .padding(16.dp)
+                    .align(Alignment.TopEnd)
+                    .focusRing(CircleShape)
+            ) {
+                Icon(
+                    imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                    contentDescription = "Favorite",
+                    tint = if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                )
             }
         }
         
-        item {
-            // Genres
-            if (series.genres.isNotEmpty()) {
-                Text(
-                    text = "Genres",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp)
-                )
-                
-                // Improved genres display with better wrapping and styling
-                LazyRow(
-                    modifier = Modifier
-                        .padding(start = 16.dp, end = 16.dp, top = 8.dp)
-                        .fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(series.genres) { genre ->
-                        Card(
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.primaryContainer
-                            ),
-                            shape = RoundedCornerShape(50.dp), // More rounded corners
+        // Genres
+        if (series.genres.isNotEmpty()) {
+            Text(
+                text = "Genres",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp)
+            )
+            
+            // Improved genres display with better wrapping and styling
+            LazyRow(
+                modifier = Modifier
+                    .padding(start = 16.dp, end = 16.dp, top = 8.dp)
+                    .fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(series.genres) { genre ->
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer
+                        ),
+                        shape = RoundedCornerShape(50.dp), // More rounded corners
+                        modifier = Modifier
+                            .height(32.dp) // Fixed height for consistency
+                    ) {
+                        Box(
+                            contentAlignment = Alignment.Center,
                             modifier = Modifier
-                                .height(32.dp) // Fixed height for consistency
+                                .fillMaxSize()
+                                .padding(horizontal = 12.dp)
                         ) {
-                            Box(
-                                contentAlignment = Alignment.Center,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(horizontal = 12.dp)
-                            ) {
-                                Text(
-                                    text = genre.title,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    fontWeight = FontWeight.Medium,
-                                    maxLines = 1
-                                )
-                            }
+                            Text(
+                                text = genre.title,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1
+                            )
                         }
                     }
                 }
             }
         }
         
-        item {
-            // Description
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 16.dp, top = 16.dp, end = 16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Description",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
+        // Description
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, top = 16.dp, end = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Description",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
         }
         
-        item {
-            // Set layout direction to RTL for the description text
-            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-                ExpandableText(
-                    text = series.description,
-                    modifier = Modifier
-                        .padding(start = 16.dp, end = 16.dp)
-                        .fillMaxWidth()
-                )
-            }
+        // Set layout direction to RTL for the description text
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+            ExpandableText(
+                text = series.description,
+                modifier = Modifier
+                    .padding(start = 16.dp, end = 16.dp)
+                    .fillMaxWidth()
+            )
         }
         
         // Seasons selection
         if (seasonsViewModel.seasons.isNotEmpty()) {
-            item {
-                Text(
-                    text = "Seasons",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp)
-                )
-            }
+            Text(
+                text = "Seasons",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp)
+            )
             
-            item {
-                LazyRow(
-                    modifier = Modifier
-                        .padding(start = 16.dp, end = 16.dp, top = 8.dp)
-                        .fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(seasonsViewModel.seasons.size) { index ->
-                        val season = seasonsViewModel.seasons[index]
-                        Card(
+            LazyRow(
+                modifier = Modifier
+                    .padding(start = 16.dp, end = 16.dp, top = 8.dp)
+                    .fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(seasonsViewModel.seasons.size) { index ->
+                    val season = seasonsViewModel.seasons[index]
+                    Card(
+                        modifier = Modifier
+                            .clickable { selectedSeasonIndex = index },
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (selectedSeasonIndex == index) 
+                                MaterialTheme.colorScheme.primary 
+                            else 
+                                MaterialTheme.colorScheme.surfaceVariant
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Box(
+                            contentAlignment = Alignment.Center,
                             modifier = Modifier
-                                .clickable { selectedSeasonIndex = index },
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (selectedSeasonIndex == index) 
-                                    MaterialTheme.colorScheme.primary 
-                                else 
-                                    MaterialTheme.colorScheme.surfaceVariant
-                            ),
-                            shape = RoundedCornerShape(12.dp)
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
                         ) {
-                            Box(
-                                contentAlignment = Alignment.Center,
-                                modifier = Modifier
-                                    .padding(horizontal = 16.dp, vertical = 8.dp)
-                            ) {
-                                Text(
-                                    text = season.title,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = if (selectedSeasonIndex == index) 
-                                        MaterialTheme.colorScheme.onPrimary 
-                                    else 
-                                        MaterialTheme.colorScheme.onSurfaceVariant,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
+                            Text(
+                                text = season.title,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = if (selectedSeasonIndex == index) 
+                                    MaterialTheme.colorScheme.onPrimary 
+                                else 
+                                    MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = FontWeight.Medium
+                            )
                         }
                     }
                 }
@@ -769,74 +772,75 @@ fun SeriesDetailsContent(
         }
         
         // Episodes of selected season
-        item {
-            if (seasonsViewModel.isLoading) {
+        if (seasonsViewModel.isLoading) {
+            Text(
+                text = "Loading seasons...",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(16.dp)
+            )
+        } else if (seasonsViewModel.errorMessage != null) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
                 Text(
-                    text = "Loading seasons...",
+                    text = "Error loading seasons: ${seasonsViewModel.errorMessage}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(16.dp)
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(
+                    onClick = { seasonsViewModel.loadSeasons(series.id) },
+                    modifier = Modifier
+                        .padding(16.dp)
+                        .initialFocus()
+                        .focusRing(ButtonDefaults.shape)
+                ) {
+                    Text("Retry")
+                }
+            }
+        } else if (seasonsViewModel.seasons.isNotEmpty()) {
+            val selectedSeason = seasonsViewModel.seasons[selectedSeasonIndex]
+            Column {
+                Text(
+                    text = selectedSeason.title,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(16.dp)
+                    modifier = Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp)
                 )
-            } else if (seasonsViewModel.errorMessage != null) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = "Error loading seasons: ${seasonsViewModel.errorMessage}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(16.dp)
+                
+                selectedSeason.episodes.forEachIndexed { index, episode ->
+                    val isEpisodeWatched = StorageUtils.isEpisodeWatched(context, series.id, selectedSeason.id, episode.id)
+                    EpisodeItem(
+                        episode = episode,
+                        isWatched = isEpisodeWatched,
+                        onPlayClick = { onEpisodeClick(episode) },
+                        onDownloadClick = { onDownloadClick(episode) },
+                        onImageClick = { imageUrl ->
+                            episodeImageUrl = imageUrl
+                            showEpisodeImageDialog = true
+                        },
+                        // Focus starts on the first episode when the screen is shown
+                        playButtonModifier = Modifier.initialFocus(enabled = index == 0)
                     )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Button(
-                        onClick = { seasonsViewModel.loadSeasons(series.id) },
-                        modifier = Modifier.padding(16.dp)
-                    ) {
-                        Text("Retry")
-                    }
                 }
-            } else if (seasonsViewModel.seasons.isNotEmpty()) {
-                val selectedSeason = seasonsViewModel.seasons[selectedSeasonIndex]
-                Column {
-                    Text(
-                        text = selectedSeason.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp)
-                    )
-                    
-                    selectedSeason.episodes.forEach { episode ->
-                        val isEpisodeWatched = StorageUtils.isEpisodeWatched(context, series.id, selectedSeason.id, episode.id)
-                        EpisodeItem(
-                            episode = episode,
-                            isWatched = isEpisodeWatched,
-                            onPlayClick = { onEpisodeClick(episode) },
-                            onDownloadClick = { onDownloadClick(episode) },
-                            onImageClick = { imageUrl ->
-                                episodeImageUrl = imageUrl
-                                showEpisodeImageDialog = true
-                            }
-                        )
-                    }
-                }
-            } else {
-                Text(
-                    text = "No seasons available",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(16.dp)
-                )
             }
+        } else {
+            Text(
+                text = "No seasons available",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(16.dp)
+            )
         }
         
-        item {
-            Spacer(modifier = Modifier.height(16.dp))
-        }
+        Spacer(modifier = Modifier.height(16.dp))
     }
 }
 
@@ -846,7 +850,8 @@ fun EpisodeItem(
     isWatched: Boolean,
     onPlayClick: () -> Unit,
     onDownloadClick: () -> Unit,
-    onImageClick: (String) -> Unit
+    onImageClick: (String) -> Unit,
+    playButtonModifier: Modifier = Modifier
 ) {
     Card(
         modifier = Modifier
@@ -975,7 +980,7 @@ fun EpisodeItem(
                 // Play button
                 IconButton(
                     onClick = { onPlayClick() },
-                    modifier = Modifier
+                    modifier = playButtonModifier
                         .size(36.dp)
                         .focusRing(CircleShape)
                 ) {

@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -68,6 +69,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
+import com.pira.ccloud.components.focusRing
+import com.pira.ccloud.components.initialFocus
+import com.pira.ccloud.components.restorableFocus
 import com.pira.ccloud.data.model.FilterType
 import com.pira.ccloud.data.model.Poster
 import com.pira.ccloud.ui.country.CountryViewModel
@@ -365,7 +369,8 @@ fun CountryPosterGrid(
     val columns = DeviceUtils.getGridColumns(LocalContext.current.resources)
     LazyVerticalGrid(
         columns = GridCells.Fixed(columns),
-        modifier = Modifier.fillMaxSize(),
+        // When the screen is shown, focus goes to its top-left visible item (see ScreenFocus)
+        modifier = Modifier.fillMaxSize().initialFocus(enabled = postersList.isNotEmpty()),
         contentPadding = PaddingValues(16.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -468,8 +473,11 @@ fun CountryPosterItem(
 ) {
     Card(
         modifier = Modifier
+            // Focus returns here when coming back from its page
+            .restorableFocus("${poster.type}_${poster.id}")
             .fillMaxWidth()
             .height(310.dp) // Fixed height for all cards
+            .focusRing(RoundedCornerShape(12.dp))
             .clickable { onClick() },
         shape = RoundedCornerShape(12.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
@@ -628,7 +636,7 @@ fun CountryErrorScreen(
         
         Button(
             onClick = onRetry,
-            modifier = Modifier.padding(top = 8.dp)
+            modifier = Modifier.padding(top = 8.dp).initialFocus().focusRing(ButtonDefaults.shape)
         ) {
             Icon(
                 imageVector = Icons.Default.Refresh,

@@ -69,6 +69,8 @@ import com.pira.ccloud.BuildConfig
 import com.pira.ccloud.R
 import com.pira.ccloud.components.focusOutline
 import com.pira.ccloud.components.focusRing
+import com.pira.ccloud.components.initialFocus
+import com.pira.ccloud.components.restorableFocus
 import com.pira.ccloud.data.model.SubtitleSettings
 import com.pira.ccloud.data.model.VideoPlayerSettings
 import com.pira.ccloud.data.model.FontSettings
@@ -308,6 +310,7 @@ fun SettingsScreen(
                             onClick = { navController.navigate("favorites") },
                             modifier = Modifier
                                 .size(48.dp)
+                                .restorableFocus("favorites")
                                 .focusRing(CircleShape)
                         ) {
                             Icon(
@@ -343,6 +346,10 @@ fun SettingsScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                // Focus starts here when the screen is shown, or returns to
+                                // the card the user left it from (see ScreenFocus)
+                                .initialFocus()
+                                .restorableFocus("theme")
                                 .onFocusChanged { isHeaderFocused = it.isFocused }
                                 .clickable { isExpanded = !isExpanded }
                                 .padding(bottom = 12.dp),
@@ -500,6 +507,7 @@ fun SettingsScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .restorableFocus("video_player")
                                 .onFocusChanged { isHeaderFocused = it.isFocused }
                                 .clickable { isExpanded = !isExpanded }
                                 .padding(bottom = 12.dp),
@@ -667,6 +675,7 @@ fun SettingsScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .restorableFocus("font")
                                 .onFocusChanged { isHeaderFocused = it.isFocused }
                                 .clickable { isExpanded = !isExpanded }
                                 .padding(bottom = 12.dp),
@@ -746,6 +755,7 @@ fun SettingsScreen(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .restorableFocus("episodes_cache")
                         .focusRing(CardDefaults.shape)
                         .clickable { showClearWatchedEpisodesDialog = true },
                     elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
@@ -810,6 +820,7 @@ fun SettingsScreen(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .restorableFocus("about")
                         .focusRing(CardDefaults.shape)
                         .clickable { navController?.navigate("about") },
                     elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
@@ -866,6 +877,7 @@ fun SettingsScreen(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .restorableFocus("updates")
                         .focusRing(CardDefaults.shape)
                         .clickable { 
                             if (!isCheckingUpdate) {
@@ -937,6 +949,7 @@ fun SettingsScreen(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .restorableFocus("reset")
                         .focusRing(CardDefaults.shape)
                         .clickable { showResetDialog = true },
                     elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)

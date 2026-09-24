@@ -47,18 +47,15 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusDirection
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.input.key.Key
@@ -83,6 +80,10 @@ import androidx.navigation.NavController
 import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
 import com.pira.ccloud.R
+import com.pira.ccloud.components.focusOutline
+import com.pira.ccloud.components.focusRing
+import com.pira.ccloud.components.initialFocus
+import com.pira.ccloud.components.restorableFocus
 import com.pira.ccloud.data.model.Country
 import com.pira.ccloud.data.model.Poster
 import com.pira.ccloud.ui.search.SearchViewModel
@@ -98,27 +99,6 @@ fun SearchScreen(
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val inputModeManager = LocalInputModeManager.current
-    val focusRequester = remember { FocusRequester() }
-    val resultsFocusRequester = remember { FocusRequester() }
-    
-    // When navigating with a TV remote, focus where the user continues when the screen is
-    // displayed: the search field (focusing it opens the keyboard), or the results when coming
-    // back to them, e.g. from a movie page, so the keyboard doesn't pop up again. Skipped on
-    // touch devices so the keyboard doesn't open by itself on phones.
-    LaunchedEffect(Unit) {
-        if (inputModeManager.inputMode != InputMode.Keyboard) return@LaunchedEffect
-        if (viewModel.searchResults.isEmpty()) {
-            focusRequester.requestFocus()
-        } else {
-            withFrameNanos { } // Let the results grid lay out its items first
-            try {
-                resultsFocusRequester.requestFocus()
-            } catch (e: IllegalStateException) {
-                // Results aren't on screen, e.g. a new search is loading
-            }
-        }
-    }
-    
     // Close the keyboard after a search or clear. With a remote, keep focus on the field so the
     // D-pad continues from there: clearing focus sends it back to the top of the screen, and
     // moving over the field again would reopen the keyboard.
@@ -167,7 +147,10 @@ fun SearchScreen(
             // D-pad focus would land on it and the field itself (and its keyboard) never got focus
             modifier = Modifier
                 .fillMaxWidth()
-                .focusRequester(focusRequester)
+                // With a remote, focus starts here (opening the keyboard) until there are
+                // results. It isn't restorable, so coming back to the results doesn't reopen
+                // the keyboard.
+                .initialFocus(enabled = viewModel.searchResults.isEmpty())
                 .onPreviewKeyEvent { handleRemoteKey(it) },
             placeholder = { 
                 Text(
@@ -310,7 +293,7 @@ fun SearchScreen(
                     posters = viewModel.searchResults,
                     navController = navController,
                     context = context,
-                    modifier = Modifier.focusRequester(resultsFocusRequester)
+                    modifier = Modifier.initialFocus()
                 )
             }
             // Only show "No results found" after a search has been performed
@@ -365,13 +348,18 @@ fun CountryStoryItem(
     country: com.pira.ccloud.data.model.Country,
     onClick: () -> Unit
 ) {
+    var isFocused by remember { mutableStateOf(false) }
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.clickable { onClick() }
+        modifier = Modifier
+            .restorableFocus("country_${country.id}")
+            .onFocusChanged { isFocused = it.isFocused }
+            .clickable { onClick() }
     ) {
         Box(
             modifier = Modifier
                 .size(60.dp)
+                .focusOutline(isFocused, CircleShape)
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center
@@ -444,8 +432,11 @@ fun PosterItem(
 ) {
     Card(
         modifier = Modifier
+            // Focus returns here when coming back from its page
+            .restorableFocus("${poster.type}_${poster.id}")
             .fillMaxWidth()
             .height(310.dp) // Fixed height for all cards
+            .focusRing(RoundedCornerShape(12.dp))
             .clickable { onClick() },
         shape = RoundedCornerShape(12.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),

@@ -34,6 +34,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -65,6 +66,9 @@ import androidx.navigation.NavHostController
 import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
 import com.pira.ccloud.components.GenreFilterSection
+import com.pira.ccloud.components.focusRing
+import com.pira.ccloud.components.initialFocus
+import com.pira.ccloud.components.restorableFocus
 import com.pira.ccloud.data.model.Genre
 import com.pira.ccloud.data.model.Movie
 import com.pira.ccloud.ui.movies.MoviesViewModel
@@ -287,7 +291,8 @@ fun MovieGrid(
     val columns = DeviceUtils.getGridColumns(LocalContext.current.resources)
     LazyVerticalGrid(
         columns = GridCells.Fixed(columns),
-        modifier = Modifier.fillMaxSize(),
+        // When the screen is shown, focus goes to its top-left visible item (see ScreenFocus)
+        modifier = Modifier.fillMaxSize().initialFocus(enabled = moviesList.isNotEmpty()),
         contentPadding = PaddingValues(16.dp),
         horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp),
         verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp)
@@ -385,8 +390,11 @@ fun MovieItem(
 ) {
     Card(
         modifier = Modifier
+            // Focus returns here when coming back from its page
+            .restorableFocus(movie.id)
             .fillMaxWidth()
             .height(310.dp) // Fixed height for all cards
+            .focusRing(RoundedCornerShape(12.dp))
             .clickable { onClick() },
         shape = RoundedCornerShape(12.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
@@ -515,7 +523,7 @@ fun ErrorScreen(
         
         Button(
             onClick = onRetry,
-            modifier = Modifier.padding(top = 8.dp)
+            modifier = Modifier.padding(top = 8.dp).initialFocus().focusRing(ButtonDefaults.shape)
         ) {
             Icon(
                 imageVector = Icons.Default.Refresh,
